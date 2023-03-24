@@ -1,15 +1,26 @@
+import glob
 from os import listdir
 
 import cv2
 import torch
+
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader
 import plotly.express as px
-import numpy as np
-from matplotlib import pyplot as plt
 
 
+# Function that returns the device (CPU or GPU)
+def get_device() -> torch.device:
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+
+    return device
+
+
+# Function that returns the class names and the number of classes
 def get_classes(train_path: str):
     class_names = sorted(listdir(train_path))
     n_classes = len(class_names)
@@ -17,6 +28,7 @@ def get_classes(train_path: str):
     return class_names, n_classes
 
 
+# Function that calculates the class distribution for training and validation data
 def calculate_class_distribution(path: str, class_names: list):
     class_dis = [len(listdir(path + name)) for name in class_names]
 
@@ -41,6 +53,7 @@ def visualize_class_distribution(class_names: list, class_dis: list, title: str)
     fig.show()
 
 
+# Function that loads an image and returns a tensor of the image and its label
 def load_image(image_path: str, image_size: int, device: torch.device):
     # load image using cv2
     image = cv2.imread(image_path)
@@ -60,9 +73,23 @@ def load_image(image_path: str, image_size: int, device: torch.device):
     return image
 
 
-def get_data_generator(path: str, batch_size: int, image_size: int):
+# Function that loads all images from a folder and returns a list of tensors of the images and their labels
+def load_images_from_folder(folder, image_size: int, device: torch.device):
+    images = []
+    for filename in glob.glob(folder + '*.jpeg'):
+        img = load_image(filename, image_size, device)
+        if img is not None:
+            images.append(img)
+
+    return images
+
+
+# Function that returns the data in the form of a data loader so that it can be used for training and validation
+def get_data_generator(path: str, batch_size: int, image_size: int) -> DataLoader:
     data_transform = transforms.Compose([
         transforms.Resize((image_size, image_size)),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(10),
         transforms.ToTensor()
     ])
 
@@ -72,42 +99,13 @@ def get_data_generator(path: str, batch_size: int, image_size: int):
     return data_loader
 
 
-def predict_one_image(model, image_path: str, class_names: list, image_size: int, device: torch.device):
+# Function that performs a prediction on a single image and returns the prediction and prediction accuracy
+def predict(model, image, class_names: list) -> [str, str, float]:
     model.eval()
     with torch.no_grad():
-        output = model(load_image(image_path, image_size, device))
+        output = model(image)
         _, preds = torch.max(output, 1)
         prediction = class_names[preds[0]]
         accuracy = torch.nn.functional.softmax(output, dim=1)[0] * 100
-        actual = image_path.split('/')[-2]
 
-        return prediction, actual, accuracy[preds[0]].item()
-
-
-# Function that visualizes some images
-def show_images(data, class_names, model=None):
-    # Get images and labels from data
-    images, labels = next(iter(data))
-
-    # Convert images to numpy
-    images = images.numpy()
-
-    # Plot the images in the batch, along with the corresponding labels
-    fig = plt.figure(figsize=(25, 4))
-    for idx in np.arange(20):
-        ax = fig.add_subplot(2, int(20 / 2), idx + 1, xticks=[], yticks=[])
-        plt.imshow(np.transpose(images[idx], (1, 2, 0)))
-        ax.set_title(class_names[labels[idx]])
-
-        # model prediction
-        if model is not None:
-            model.eval()
-            with torch.no_grad():
-                output = model(images)
-                _, preds = torch.max(output, 1)
-                ax.set_title("{} ({})".format(class_names[preds[idx]], class_names[labels[idx]]),
-                             color=("green" if preds[idx] == labels[idx].item() else "red"))
-        else:
-            ax.set_title(class_names[labels[idx]])
-
-    plt.show()
+        return prediction, accuracy[preds[0]].item()
