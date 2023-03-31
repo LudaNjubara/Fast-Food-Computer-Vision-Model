@@ -7,8 +7,9 @@ const = {
     "test_path": "Fast Food Classification V2/Test/",
     "image_size": 256,
     "batch_size": 32,
-    "n_epochs": 50,
+    "n_epochs": 20,
     "learning_rate": 0.001,
     "l2_reg": 0.001,
-    "dropout": 0.45,
+    "dropout": 0.35,
+    "early_stop": 5,
 }
