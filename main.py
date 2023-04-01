@@ -1,3 +1,5 @@
+import os
+from random import random
 
 # Model
 import torch
@@ -90,20 +92,25 @@ def save_model(path: str = "fast_food_model.pth"):
 
 
 def predict_many():
-    # Predict the test set
     model.eval()
     with torch.no_grad():
         correct = 0
         total = 0
-        for images, labels in test_loader:
+        images_to_show = []
+        for i, (images, labels) in enumerate(test_loader):
             images, labels = images.to(const["device"]), labels.to(const["device"])
             outputs = model(images)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
+            for j in range(images.size(0)):
+                if len(images_to_show) < 20 and random() < 0.05:
+                    images_to_show.append((images[j], labels[j], predicted[j].item()))
 
         accuracy = 100 * correct / total
         print('Test Accuracy: {:.2f} %'.format(accuracy))
+
+        utils.show_images(images_to_show, class_names)
 
 
 def predict_one(image_path: str):
@@ -117,8 +124,8 @@ def predict_one(image_path: str):
         output = model(image)
         _, predicted = torch.max(output.data, 1)
         print('Predicted: {}'.format(class_names[predicted.item()]))
-        plt.imshow(Image.open(image_path))
-        plt.show()
+
+        utils.show_image(image, class_names, predicted.item())
 
 
 # Main
