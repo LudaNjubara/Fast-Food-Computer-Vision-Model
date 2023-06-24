@@ -3,17 +3,14 @@ from random import random
 
 # Model
 import torch
-import torchvision
 import torch.nn as nn
+import torchvision
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
-from torchvision.models import ResNet18_Weights
+from torchvision.models import ResNet50_Weights
 
 # Image processing
 from PIL import Image
-
-# Plotting
-from matplotlib import pyplot as plt
 
 # Custom imports
 import utils
@@ -23,7 +20,7 @@ from constants import const
 # Train the model
 def train_model():
     # Initialize variables
-    best_valid_loss = float('inf')
+    best_valid_loss = 0.56
     early_stop_counter = 0
 
     for epoch in range(const["n_epochs"]):
@@ -31,7 +28,7 @@ def train_model():
         model.train()
         train_loss = 0
         train_correct = 0
-        for i, (inputs, labels) in enumerate(train_loader):
+        for inputs, labels in train_loader:
             inputs, labels = inputs.to(const["device"]), labels.to(const["device"])
             optimizer.zero_grad()
             outputs = model(inputs)
@@ -69,8 +66,9 @@ def train_model():
                 print(
                     'Validation loss decreased ({:.6f} --> {:.6f}).  Saving model ...'.format(best_valid_loss,
                                                                                               valid_loss))
-                torch.save(model.state_dict(), 'fast_food_model.pth')
+                save_model()
 
+            # Early stopping if the validation loss has not decreased for 4 consecutive epochs
             else:
                 early_stop_counter += 1
                 if early_stop_counter >= const["early_stop"]:
@@ -83,11 +81,11 @@ def train_model():
               .format(epoch + 1, const["n_epochs"], train_loss, train_acc * 100, valid_loss, valid_acc * 100))
 
 
-def load_existing_model(path: str = "fast_food_model.pth"):
+def load_existing_model(path: str = "fast_food_model_w_resnet50_improved.pth"):
     model.load_state_dict(torch.load(path))
 
 
-def save_model(path: str = "fast_food_model.pth"):
+def save_model(path: str = "fast_food_model_w_resnet50_improved.pth"):
     torch.save(model.state_dict(), path)
 
 
@@ -136,7 +134,7 @@ if __name__ == "__main__":
 
     # initialize variables
     class_names, n_classes = utils.get_classes(const["train_path"])
-    single_test_image_path = "F:/Faks/Algebra/semestar_2/Racunalni vid/Fast Food Classification V2/test_image.jpg"
+    single_test_image_path = const["single_test_image_path"]
 
     # Define the transformation function
     transform = transforms.Compose([
@@ -152,19 +150,16 @@ if __name__ == "__main__":
     ])
 
     # Load the dataset
-    train_dataset = datasets.ImageFolder(
-        root='F:/Faks/Algebra/semestar_2/Racunalni vid/Fast Food Classification V2/Train', transform=transform)
-    valid_dataset = datasets.ImageFolder(
-        root='F:/Faks/Algebra/semestar_2/Racunalni vid/Fast Food Classification V2/Valid', transform=transform)
-    test_dataset = datasets.ImageFolder(
-        root='F:/Faks/Algebra/semestar_2/Racunalni vid/Fast Food Classification V2/Test', transform=transform)
+    train_dataset = datasets.ImageFolder(root=const["train_path"], transform=transform)
+    valid_dataset = datasets.ImageFolder(root=const["valid_path"], transform=transform)
+    test_dataset = datasets.ImageFolder(root=const["test_path"], transform=transform)
 
     # Load the pre-trained model
-    model = torchvision.models.resnet18(weights=ResNet18_Weights.DEFAULT)
+    model = torchvision.models.resnet50(weights=ResNet50_Weights)
     num_features = model.fc.in_features
-    model.fc = nn.Linear(num_features, 10)
+    model.fc = nn.Linear(num_features, n_classes)
 
-    # Move the model to the device
+    # Move the model to the device (GPU)
     model.to(const["device"])
 
     # Define the dataloaders
@@ -176,22 +171,24 @@ if __name__ == "__main__":
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=const["learning_rate"])
 
-    if TRAINING_MODE:
+    if TRAINING_MODE or OPTIMIZE_MODE:
         if OPTIMIZE_MODE:
-            # Load the model
+            # Freeze the pre-trained layers and train only the last layer
+            for name, param in model.named_parameters():
+                if 'fc' in name:
+                    param.requires_grad = True
+                else:
+                    param.requires_grad = False
+
+            # Update the optimizer
+            optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()),
+                                         lr=const["learning_rate"])
+
             load_existing_model()
 
-        # Train the model
         train_model()
-
-        # Save the model
-        save_model()
     else:
-        # Load the model
         load_existing_model()
-
-        # Predict a single image
         predict_one(single_test_image_path)
-
         # Predict multiple images from the test set
         predict_many()
